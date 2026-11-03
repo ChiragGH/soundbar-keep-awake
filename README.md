@@ -1,49 +1,59 @@
 # Soundbar Keep Awake
 
-A small, offline Windows utility that sends a short audio signal to the **Windows default output** on a timer. It is intended for a soundbar connected to a Windows PC that enters standby after roughly 15 minutes without audio.
+An offline Windows tray app for a PC-connected soundbar that goes into standby when audio stops. Version 2 is a compiled C# Windows executable. Startup launches the EXE directly; no PowerShell, command shell, scheduled script, browser, or administrator rights are needed to run it.
 
-## What it does
+## Download and install
 
-- Starts with an 8-second digital silence signal, then repeats every 10 minutes.
-- Offers two quiet 440 Hz signal levels if the soundbar ignores digital silence.
-- Runs in the system tray. Double-click its tray icon to open the controls; right-click for Open, Start, Stop, and Exit.
-- Saves the selected interval and signal mode in `settings.json`.
-- Uses local audio playback only. It does not open the microphone, record, connect to the internet, or collect data.
+Download **SoundbarKeepAwake-v2.0.0.zip** from [Releases](https://github.com/ChiragGH/soundbar-keep-awake/releases/latest), extract it, and double-click **SoundbarKeepAwake-Setup.exe**. Setup is a compiled executable too; it does not run a shell or script. You may instead run `SoundbarKeepAwake.exe --install` directly.
 
-The signal goes to the **current Windows default audio output**. The utility cannot affect a soundbar connected only to a TV or another device.
+Installation copies the app to `%LOCALAPPDATA%\Programs\SoundbarKeepAwake`, adds a Start menu shortcut, enables startup for your Windows account, and starts the app in the tray. It replaces the version 1 Startup shortcut, stops only the old installed soundbar PowerShell process, and backs up the old files in `legacy-backup`.
 
-## Install and start with Windows
+Open **Soundbar Keep Awake** from Start or double-click its tray icon. Select your soundbar output, then click **Apply / Start**. The selected device is saved by its Windows endpoint ID. Changing the Windows default output will not redirect the signal to another speaker or headphones. When the saved output is unavailable, the app waits and retries every five seconds. Power on and reconnect the soundbar yourself if it has already switched off.
 
-1. Set the soundbar as the Windows default audio output.
-2. In PowerShell, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1` from this folder.
-3. The installer places the program in `%LOCALAPPDATA%\Programs\SoundbarKeepAwake`, creates a shortcut in your account's Startup folder, and starts it immediately in the tray. No administrator rights are needed.
+You can also run `SoundbarKeepAwake.exe` without installing. It creates local settings but does not enable startup unless you check the startup option.
 
-At subsequent Windows sign-ins, it starts automatically with the saved settings. The installer does not change the system-wide PowerShell execution policy.
+## Why version 1 could fail
 
-To run it without installing, double-click `Launch Soundbar Keep Awake.cmd` and click **Start**.
+Version 1 played eight seconds of all-zero audio every ten minutes through the Windows default output. A soundbar can ignore digital silence when checking for inactivity. A running PowerShell process also did not establish that audio was still reaching the soundbar.
 
-## Settings and operation
+Version 2 holds a shared WASAPI playback stream open on the selected soundbar. Its default settings are:
 
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| Interval | 10 minutes | Time between the start of each signal; selectable from 1 to 14 minutes. |
-| Signal | Digital silence | Zero-value PCM audio samples. |
-| Signal duration | 8 seconds | Fixed duration for every send. |
+| Setting | Default |
+| --- | --- |
+| Background signal | Continuous 80 Hz signal at -70 dBFS |
+| Standby prevention pulse | 440 Hz tone at -40 dBFS for 8 seconds |
+| Pulse interval | 5 minutes, including a pulse when playback starts |
+| Pulse fade | 50 ms fade in/out to reduce clicks |
+| Recovery | Retry every 5 seconds if the output disappears or playback stalls |
 
-**Send now** plays one signal immediately. **Start** sends immediately and begins the timer. **Stop** halts the timer and current signal. Closing the window exits the utility; minimizing it keeps it running in the tray.
+The background signal keeps the audio transport streaming, and the periodic tone provides a real audio signal for standby detection. **The tone may be audible. Complete silence cannot be guaranteed to prevent standby on hardware that requires a detectable signal.**
 
-If the soundbar still turns off with digital silence, choose **Very quiet tone (-45 dB)**, then **Quiet tone (-35 dB)** if needed. These tones may be audible at high soundbar volume. Try the lowest level that works. A soundbar that looks for audio above a threshold cannot be reliably kept awake with complete silence.
+If it still turns off, raise **Tone level** by 5 dB (for example, -40 to -35) and click **Apply / Start**. If it is too audible, lower the level. **Continuous quiet tone** is an alternative for devices that require uninterrupted detectable audio. Volume and mute settings in Windows and on the soundbar still affect the physical output. No software can guarantee compatibility with every hardware standby rule.
 
-Windows sleep and sign-out stop the timer. It resumes automatically at the next sign-in if installed. If the soundbar has an auto-standby setting, disabling that setting is usually more reliable.
+## Controls
+
+- **Apply / Start:** save the output and signal settings and start or restart playback.
+- **Pause:** stop playback and save the paused state, including across sign-in.
+- **Close window:** hide to the system tray; playback continues.
+- **Exit:** stop playback and close the app. Startup remains enabled if checked.
+- **Start this app when I sign in:** add or remove this app's per-user startup registration.
+
+The status line reports whether audio is playing, waiting for a device, or stopped. **Stream advancing** counts frames consumed by the Windows audio engine. This confirms software playback progress; it is not a measurement of soundbar power or microphone input. Windows sleep pauses delivery; the app retries if the audio device is invalidated after resume.
 
 ## Privacy and security
 
-The source uses `System.Media.SoundPlayer` to send a generated WAV signal. It has no microphone capture or network code. The startup shortcut launches the local script under your Windows account. `-ExecutionPolicy Bypass` applies only to that PowerShell process and does not change your account or system policy.
+The app uses playback interfaces only. There is no microphone capture, audio loopback capture, network access, telemetry, auto-updater, or third-party runtime download. Local `settings.json` and a rolling `status.json` are stored in `%LOCALAPPDATA%\SoundbarKeepAwake`. Startup failures may also write `error.json` there. Status includes the chosen output name, stream progress and error text, never recorded audio.
 
-## Uninstall
+Startup is the `SoundbarKeepAwake` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, pointing directly to the installed EXE with `--background`. The program runs with your normal user permissions. The binary is not code-signed. Source and SHA-256 checksums are provided for inspection; the executable format itself does not make software inherently safer.
 
-Exit the app from its tray menu, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Uninstall.ps1` from this source folder. This removes the Startup shortcut and installed program, including its saved settings.
+## Remove the app
 
-## Limitations
+Uncheck **Start this app when I sign in**, then click **Exit**. Delete `%LOCALAPPDATA%\Programs\SoundbarKeepAwake`, `%LOCALAPPDATA%\SoundbarKeepAwake`, and the **Soundbar Keep Awake** shortcut in your Start menu. Alternatively, `SoundbarKeepAwake.exe --disable-startup` removes startup and tells the running instance to exit before you delete its files.
 
-Soundbar standby behavior varies by model and input type. Digital silence may not count as activity, and even a quiet tone may be below a model's detection threshold. This tool cannot guarantee that every soundbar stays awake.
+## Build and check
+
+Requires Windows with .NET Framework 4.x and its built-in C# compiler. Run `build.cmd` from a source checkout. It produces the app and Setup executables, compiles the test runner, and checks the signal's timing, nonzero background, amplitude bounds, fades, PCM/float encoding, and cancellation when an output is missing. No package restore or network is needed. The build command is for source development only and is never used by the installed app.
+
+`SoundbarKeepAwake.exe --probe "%LOCALAPPDATA%\SoundbarKeepAwake\probe.json" --quiet` writes playback endpoint names and connection states. The parent folder must exist. It does not open an audio capture stream.
+
+The audio renderer follows Microsoft's [shared WASAPI rendering model](https://learn.microsoft.com/en-us/windows/win32/coreaudio/rendering-a-stream).
